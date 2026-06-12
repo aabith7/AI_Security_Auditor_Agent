@@ -1,8 +1,10 @@
 """Ollama agent loop: model → tool calls → execute → respond."""
 import json
+import re
 from ollama import Client
 from config import OLLAMA_API_KEY, MODEL, SYSTEM_PROMPT
 from tools import TOOL_SCHEMAS, execute_tool
+
 class DomoAppDBAgent:
     def __init__(self):
         # Configure client for Ollama Cloud

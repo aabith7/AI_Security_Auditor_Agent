@@ -109,5 +109,5 @@ async def auditor_health():
         "status":       "ok",
         "ollama_ready": bool(OLLAMA_API_KEY),
         "model":        "minimax-m3:cloud",
-        "threats":      4,
+        "threats":      6,
     })

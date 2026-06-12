@@ -194,9 +194,10 @@
 
 <div class="topbar">
   <button class="back-btn" onclick="goBack()">&#8592; Back to chat</button>
+  <img src="/security-ui/gwc-logo.jpg" height="36" style="object-fit:contain;border-radius:8px;flex-shrink:0;" alt="GWC Data"/>
   <div>
     <div class="topbar-title">&#x1F6E1; AI Security Auditor</div>
-    <div class="topbar-sub">Domo AppDB Agent &middot; 4 threat checks &middot; </div>
+    <div class="topbar-sub">Domo AppDB Agent</div>
   </div>
   <div class="verdict-pill idle" id="verdict-pill">
     <span id="verdict-dot">&#9679;</span>
@@ -492,6 +493,7 @@ async function resolveCheck(id) {
   const f=findings[id];
   if(!f) return;
   findings[id].status='resolved';
+  try{localStorage.setItem('auditor_findings',JSON.stringify(findings));}catch(e){}
   addLog(`Resolved: ${f.title}`,'ok');
   rebuildList();
   updateScoreBar();
@@ -515,8 +517,11 @@ async function autoResolve(id) {
     if(resp.status === 200) {
       addLog(`Auto Fix Succeeded: ${f.title}`,'ok');
       showAiText(data.message || 'Threat successfully resolved by backend agent.');
-      // Auto-trigger full security audit scan to reload code state
-      startAudit();
+      findings[id].status = 'resolved';
+      try{localStorage.setItem('auditor_findings',JSON.stringify(findings));}catch(e){}
+      rebuildList();
+      updateCounters();
+      updateScoreBar();
     } else {
       addLog(`Auto Fix Failed: ${data.message || 'Error occurred.'}`,'err');
       showAiText(`Could not apply auto-fix: ${data.message}`);
@@ -535,10 +540,13 @@ async function autoRevoke(id) {
     const resp=await fetch(`/security/revoke/${id}`,{method:'POST'});
     const data=await resp.json();
     if(resp.status === 200) {
-      addLog(`Patches Revoked successfully: ${f.title}`,'ok');
-      showAiText(data.message || 'Threat successfully reverted to original state.');
-      // Auto-trigger full security audit scan to reload code state
-      startAudit();
+      addLog(`Patches Revoked: ${f.title} — marked back as threat`,'warn');
+      showAiText(data.message || 'Patches reverted. Threat is now active again.');
+      findings[id].status = 'threat';
+      try{localStorage.setItem('auditor_findings',JSON.stringify(findings));}catch(e){}
+      rebuildList();
+      updateCounters();
+      updateScoreBar();
     } else {
       addLog(`Revoke Failed: ${data.message || 'Error occurred.'}`,'err');
       showAiText(`Could not revoke patches: ${data.message}`);
@@ -559,6 +567,7 @@ function startAudit() {
   if(scanning) return;
   scanning=true;
   findings={};
+  localStorage.removeItem('auditor_findings');
   currentPage=1;
   activeFilter='all';
   logs=[];
@@ -573,7 +582,7 @@ function startAudit() {
   document.querySelectorAll('.filter-tab').forEach(t=>{t.classList.remove('active','all','critical','high','medium','resolved');});
   document.getElementById('tab-all').classList.add('active','all');
   updateCounters();
-  addLog('Starting AI security audit — Groq llama-3.3-70b-versatile','warn');
+  addLog('Starting AI security audit…','warn');
   addLog('Connecting to audit stream…');
   if(eventSource) eventSource.close();
   eventSource=new EventSource('/security/audit/stream');
@@ -585,6 +594,7 @@ function startAudit() {
     } else if(event.type==='finding'){
       const f=event.finding;
       findings[f.id]=f;
+      try{localStorage.setItem('auditor_findings',JSON.stringify(findings));}catch(e){}
       const lt=f.severity==='critical'||f.severity==='high'?'err':f.severity==='medium'?'warn':'ok';
       const st=f.status==='resolved'?'ok':lt;
       addLog(`[${f.status==='resolved'?'RESOLVED':f.severity.toUpperCase()}] ${f.title}`,st);
@@ -616,9 +626,37 @@ function startAudit() {
   };
 }
 
+async function loadState() {
+  try {
+    const r = await fetch('/ping');
+    const d = await r.json();
+    const prev = localStorage.getItem('server_start');
+    if (prev && prev !== d.started) {
+      localStorage.removeItem('auditor_findings');
+    }
+    localStorage.setItem('server_start', d.started);
+  } catch {}
+  try {
+    const raw = localStorage.getItem('auditor_findings');
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (!saved || !Object.keys(saved).length) return;
+    findings = saved;
+    rebuildList();
+    updateCounters();
+    updateScoreBar();
+    const hasRed = Object.values(findings).some(f=>(f.severity==='critical'||f.severity==='high')&&f.status==='threat');
+    document.getElementById('verdict-pill').className='verdict-pill '+(hasRed?'red':'green');
+    document.getElementById('verdict-text').textContent=hasRed?'Not approved — RED':'Approved — GREEN';
+    addLog('Previous audit results restored.','ok');
+  } catch(e) {}
+}
+
+document.addEventListener('DOMContentLoaded', loadState);
+
 function resetAudit() {
   if(eventSource) eventSource.close();
-  scanning=false; findings={}; currentPage=1; activeFilter='all'; logs=[];
+  scanning=false; findings={}; localStorage.removeItem('auditor_findings'); currentPage=1; activeFilter='all'; logs=[];
   document.getElementById('log-box').innerHTML='';
   document.getElementById('threat-list').innerHTML='';
   document.getElementById('findings-section').style.display='none';

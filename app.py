@@ -1,20 +1,22 @@
 """FastAPI wrapper — serves the chat UI + agent endpoints."""
+import os
 import uuid
-from fastapi import FastAPI, HTTPException
+import time
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from agent import DomoAppDBAgent
-# Add these imports at the top
-from fastapi.staticfiles import StaticFiles
 from security_auditor.auditor_routes import auditor_router
+
+SERVER_START_TIME = str(int(time.time()))
 
 app = FastAPI(title="Domo AppDB Agent API", version="1.0.0")
 
-# Add these two lines after app = FastAPI()
 app.include_router(auditor_router)
 app.mount("/security-ui", StaticFiles(directory="security_auditor/static"), name="security-ui")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,6 +24,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+
 
 sessions: dict[str, DomoAppDBAgent] = {}
 
@@ -35,6 +40,10 @@ class ChatResponse(BaseModel):
     session_id: str
     reply: str
 
+
+@app.get("/ping")
+def ping():
+    return {"started": SERVER_START_TIME}
 
 @app.get("/")
 def serve_ui():
@@ -73,6 +82,7 @@ def delete_session(session_id: str):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)
+
 
 
 
