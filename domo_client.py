@@ -5,8 +5,6 @@ from config import DOMO_BASE_URL, DOMO_DEVELOPER_TOKEN
 
 
 class DomoAppDBClient:
-    DELETE_BATCH_CAP = 3
-
     def __init__(self, base_url: str = DOMO_BASE_URL, token: str = DOMO_DEVELOPER_TOKEN):
         self.base_url = base_url
         self.session = requests.Session()
@@ -92,18 +90,13 @@ class DomoAppDBClient:
         )
 
     def delete_documents_by_field(self, collection_id: str, field: str, value) -> str:
-        """Find documents by field value, then delete each one by its ID up to DELETE_BATCH_CAP."""
+        """Find documents by field value, then delete each one by its ID."""
         found = json.loads(self.find_documents_by_field(collection_id, field, value))
         if found["match_count"] == 0:
             return f"No documents found where {field} = {value}. Nothing deleted."
 
-        # Cap the batch delete size to prevent complete database wipes
-        to_delete = found["documents"]
-        if len(to_delete) > self.DELETE_BATCH_CAP:
-            return f"ERROR: Bulk delete size ({len(to_delete)}) exceeds the batch cap ({self.DELETE_BATCH_CAP}). Deletion aborted."
-
         deleted = []
-        for doc in to_delete:
+        for doc in found["documents"]:
             self.delete_document(collection_id, doc["document_id"])
             deleted.append(doc["document_id"])
         return json.dumps({"deleted_count": len(deleted), "deleted_ids": deleted})

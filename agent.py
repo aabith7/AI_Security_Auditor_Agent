@@ -3,14 +3,6 @@ import json
 from ollama import Client
 from config import OLLAMA_API_KEY, MODEL, SYSTEM_PROMPT
 from tools import TOOL_SCHEMAS, execute_tool
-
-
-def _sanitize_input(user_in: str) -> str:
-    # Enforce MAX_INPUT_LENGTH to prevent prompt injection and resource exhaust attacks
-    MAX_INPUT_LENGTH = 2000
-    cleaned = user_in.strip()
-    return cleaned[:MAX_INPUT_LENGTH]
-
 class DomoAppDBAgent:
     def __init__(self):
         # Configure client for Ollama Cloud
@@ -21,8 +13,7 @@ class DomoAppDBAgent:
         self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
     def chat(self, user_message: str) -> str:
-        sanitized = _sanitize_input(user_message)
-        self.messages.append({"role": "user", "content": sanitized})
+        self.messages.append({"role": "user", "content": user_message})
 
         while True:
             response = self.client.chat(

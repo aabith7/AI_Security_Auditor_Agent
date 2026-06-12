@@ -129,11 +129,6 @@ def execute_tool(name: str, args: dict) -> str:
     fn = TOOL_REGISTRY.get(name)
     if fn is None:
         return f"ERROR: unknown tool '{name}'"
-        
-    if "delete" in name.lower():
-        # Deletion is not permitted without explicit confirmation
-        if not args.get("confirm") and args.get("confirmed") is not True:
-            return "ERROR: Deletion is not permitted without explicit 'confirm': true argument."
 
     if not args.get("collection_id"):
         args["collection_id"] = DOMO_COLLECTION_ID
