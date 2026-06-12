@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Security Auditor — Domo AppDB Agent</title>
+<style>
+  :root {
+    --bg: #f4f6fb;
+    --bg2: #ffffff;
+    --bg3: #eef1f8;
+    --border: #dde2f0;
+    --text: #1a1d2e;
+    --muted: #6b7280;
+    --accent: #5b4ef0;
+    --red: #dc2626;
+    --red-bg: #fef2f2;
+    --red-bdr: #fca5a5;
+    --amber: #d97706;
+    --amber-bg: #fffbeb;
+    --amber-bdr: #fcd34d;
+    --green: #16a34a;
+    --green-bg: #f0fdf4;
+    --green-bdr: #86efac;
+    --blue: #2563eb;
+    --blue-bg: #eff6ff;
+    --blue-bdr: #93c5fd;
+    --mono: 'Courier New', monospace;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 1.6; min-height: 100vh; }
+
+  .topbar { display: flex; align-items: center; gap: 12px; padding: 14px 24px; background: var(--bg2); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; box-shadow: var(--shadow); }
+  .back-btn { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg3); color: var(--muted); cursor: pointer; font-size: 13px; transition: all 0.15s; }
+  .back-btn:hover { border-color: var(--accent); color: var(--accent); background: #f0effe; }
+  .topbar-title { font-size: 15px; font-weight: 600; color: var(--text); }
+  .topbar-sub { font-size: 12px; color: var(--muted); }
+  .verdict-pill { margin-left: auto; display: flex; align-items: center; gap: 6px; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid; }
+  .verdict-pill.idle  { background: var(--bg3); color: var(--muted); border-color: var(--border); }
+  .verdict-pill.scan  { background: var(--amber-bg); color: var(--amber); border-color: var(--amber-bdr); }
+  .verdict-pill.red   { background: var(--red-bg); color: var(--red); border-color: var(--red-bdr); animation: pulse-red 2s ease-in-out infinite; }
+  .verdict-pill.green { background: var(--green-bg); color: var(--green); border-color: var(--green-bdr); }
+  @keyframes pulse-red { 0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,0)} 50%{box-shadow:0 0 0 5px rgba(220,38,38,0.12)} }
+
+  .main { max-width: 960px; margin: 0 auto; padding: 24px 20px 60px; }
+
+  .score-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .sc { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow); }
+  .sc-val { font-size: 28px; font-weight: 700; }
+  .sc-val.red   { color: var(--red); }
+  .sc-val.amber { color: var(--amber); }
+  .sc-val.green { color: var(--green); }
+  .sc-val.muted { color: var(--muted); }
+  .sc-lbl { font-size: 11px; color: var(--muted); margin-top: 3px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+
+  .prod-score { background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; padding: 20px 24px; margin-bottom: 20px; display: none; align-items: center; gap: 24px; box-shadow: var(--shadow); }
+  .prod-score.visible { display: flex; }
+  .prod-score-num { font-size: 46px; font-weight: 700; min-width: 90px; }
+  .prod-score-num.red   { color: var(--red); }
+  .prod-score-num.green { color: var(--green); }
+  .prod-score-right { flex: 1; }
+  .prod-score-label { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+  .track { height: 8px; background: var(--bg3); border-radius: 4px; overflow: hidden; margin-bottom: 6px; }
+  .fill  { height: 100%; border-radius: 4px; transition: width 1.2s ease; }
+  .fill.red   { background: var(--red); }
+  .fill.green { background: var(--green); }
+  .prod-score-sub { font-size: 12px; color: var(--muted); }
+
+  .controls { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+  .btn { padding: 8px 18px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg2); color: var(--text); cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.15s; box-shadow: var(--shadow); }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(91,78,240,0.25); }
+  .btn.primary:hover { opacity: 0.9; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .progress-text { font-size: 12px; color: var(--muted); margin-left: 4px; }
+  .spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .ai-box { background: var(--blue-bg); border: 1px solid var(--blue-bdr); border-radius: 12px; padding: 14px 18px; margin-bottom: 20px; display: none; box-shadow: var(--shadow); }
+  .ai-box.visible { display: block; }
+  .ai-box-label { font-size: 11px; font-weight: 600; color: var(--blue); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+  .ai-box-text { font-size: 13px; color: var(--text); line-height: 1.7; }
+
+  /* ── Filter tabs ── */
+  .filter-bar { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+  .filter-tab { padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--bg2); color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.15s; display: flex; align-items: center; gap: 6px; }
+  .filter-tab:hover { border-color: var(--accent); color: var(--accent); }
+  .filter-tab.active { color: #fff; border-color: transparent; }
+  .filter-tab.active.all      { background: var(--accent); }
+  .filter-tab.active.critical { background: var(--red); }
+  .filter-tab.active.high     { background: #ea580c; }
+  .filter-tab.active.medium   { background: var(--amber); }
+  .filter-tab.active.resolved { background: var(--green); }
+  .filter-count { background: rgba(255,255,255,0.25); border-radius: 10px; padding: 0 6px; font-size: 11px; font-weight: 700; }
+  .filter-tab:not(.active) .filter-count { background: var(--bg3); color: var(--muted); }
+
+  /* ── Pagination ── */
+  .pagination { display: flex; align-items: center; gap: 8px; margin-top: 16px; justify-content: center; }
+  .page-btn { padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg2); color: var(--text); cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.15s; }
+  .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .page-info { font-size: 12px; color: var(--muted); padding: 0 8px; }
+  .page-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); cursor: pointer; transition: background 0.15s; border: none; }
+  .page-dot.active { background: var(--accent); }
+
+  .section-lbl { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
+
+  .threat-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+  .tcard { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; transition: border-color 0.2s, box-shadow 0.2s; animation: fadeUp 0.25s ease; box-shadow: var(--shadow); }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+  .tcard.critical { border-left: 3px solid var(--red); }
+  .tcard.high     { border-left: 3px solid #ea580c; }
+  .tcard.medium   { border-left: 3px solid var(--amber); }
+  .tcard.low      { border-left: 3px solid var(--green); }
+  .tcard.resolved { border-left: 3px solid var(--green); }
+  .tcard:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+
+  .tcard-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; cursor: pointer; transition: background 0.12s; }
+  .tcard-head:hover { background: var(--bg3); }
+
+  .sev-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .sev-dot.critical { background: var(--red); box-shadow: 0 0 0 3px rgba(220,38,38,0.2); animation: blink 1.5s ease-in-out infinite; }
+  .sev-dot.high     { background: #ea580c; }
+  .sev-dot.medium   { background: var(--amber); }
+  .sev-dot.low      { background: var(--green); }
+  .sev-dot.resolved { background: var(--green); }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.35} }
+
+  .tcard-title { font-size: 13px; font-weight: 600; color: var(--text); flex: 1; }
+  .domain-tag  { font-size: 10px; color: var(--muted); margin-right: 4px; background: var(--bg3); padding: 2px 8px; border-radius: 10px; }
+
+  .sev-badge { font-size: 10px; padding: 3px 10px; border-radius: 10px; font-weight: 600; flex-shrink: 0; }
+  .sev-badge.critical { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-bdr); }
+  .sev-badge.high     { background: #fff7ed; color: #ea580c; border: 1px solid #fdba74; }
+  .sev-badge.medium   { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-bdr); }
+  .sev-badge.low      { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-bdr); }
+  .sev-badge.resolved { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-bdr); }
+
+  .cvss-chip { font-size: 10px; font-family: var(--mono); color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; background: var(--bg3); }
+
+  .tcard-body { border-top: 1px solid var(--border); padding: 16px; display: none; background: var(--bg3); }
+  .tcard-body.open { display: block; }
+
+  .desc-text { font-size: 12px; color: var(--muted); line-height: 1.7; margin-bottom: 12px; }
+
+  .exploit-box { background: var(--red-bg); border-left: 3px solid var(--red); border-radius: 0 6px 6px 0; padding: 10px 12px; margin-bottom: 10px; }
+  .exploit-label { font-size: 10px; font-weight: 700; color: var(--red); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .exploit-text  { font-size: 12px; color: #7f1d1d; font-family: var(--mono); }
+
+  .impact-box  { background: var(--amber-bg); border-left: 3px solid var(--amber); border-radius: 0 6px 6px 0; padding: 8px 12px; margin-bottom: 12px; }
+  .impact-label { font-size: 10px; font-weight: 700; color: var(--amber); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px; }
+  .impact-text  { font-size: 12px; color: #78350f; }
+
+  .remedy-box { border: 1px solid; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+  .remedy-box.threat   { border-color: var(--red-bdr); background: var(--red-bg); }
+  .remedy-box.resolved { border-color: var(--green-bdr); background: var(--green-bg); }
+  .remedy-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+  .remedy-label.threat   { color: var(--red); }
+  .remedy-label.resolved { color: var(--green); }
+  .remedy-steps { list-style: none; }
+  .remedy-steps li { display: flex; gap: 8px; font-size: 12px; color: var(--muted); padding: 3px 0; line-height: 1.6; align-items: flex-start; }
+  .step-n { width: 18px; height: 18px; border-radius: 50%; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .step-n.threat   { background: var(--red-bdr); color: var(--red); }
+  .step-n.resolved { background: var(--green-bdr); color: var(--green); }
+
+  .resolve-btn { margin-top: 10px; padding: 7px 18px; border-radius: 8px; border: 1px solid var(--green-bdr); background: var(--green-bg); color: var(--green); cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.15s; }
+  .resolve-btn:hover { background: #dcfce7; border-color: var(--green); }
+
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
+
+  .log-box { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; font-family: var(--mono); font-size: 11px; color: var(--muted); max-height: 120px; overflow-y: auto; box-shadow: var(--shadow); }
+  .log-line { padding: 1px 0; line-height: 1.6; }
+  .log-ts   { color: #9ca3af; }
+  .log-ok   { color: var(--green); }
+  .log-err  { color: var(--red); }
+  .log-warn { color: var(--amber); }
+  /* ── Diff Box visualizer ── */
+  .diff-box { margin-top: 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg2); overflow: hidden; box-shadow: var(--shadow); }
+  .diff-header { background: var(--bg3); padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .diff-header code { font-family: var(--mono); background: var(--border); padding: 2px 6px; border-radius: 4px; color: var(--text); font-size: 10px; }
+  .diff-split { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); }
+  @media (max-width: 768px) { .diff-split { grid-template-columns: 1fr; } }
+  .diff-pane { background: var(--bg2); padding: 12px; overflow-x: auto; display: flex; flex-direction: column; }
+  .diff-pane-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+  .diff-pane-title.before { color: var(--red); }
+  .diff-pane-title.after { color: var(--green); }
+  .diff-code { font-family: var(--mono); font-size: 11px; white-space: pre; line-height: 1.5; padding: 8px; border-radius: 4px; overflow-x: auto; flex: 1; }
+  .diff-code.before { color: #b91c1c; background: #fef2f2; }
+  .diff-code.after { color: #15803d; background: #f0fdf4; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <button class="back-btn" onclick="goBack()">&#8592; Back to chat</button>
+  <div>
+    <div class="topbar-title">&#x1F6E1; AI Security Auditor</div>
+    <div class="topbar-sub">Domo AppDB Agent &middot; 4 threat checks &middot; </div>
+  </div>
+  <div class="verdict-pill idle" id="verdict-pill">
+    <span id="verdict-dot">&#9679;</span>
+    <span id="verdict-text">Awaiting scan</span>
+  </div>
+</div>
+
+<div class="main">
+
+  <div class="score-grid">
+    <div class="sc"><div class="sc-val red"   id="s-critical">0</div><div class="sc-lbl">Critical</div></div>
+    <div class="sc"><div class="sc-val" style="color:#ea580c" id="s-high">0</div><div class="sc-lbl">High</div></div>
+    <div class="sc"><div class="sc-val amber"  id="s-medium">0</div><div class="sc-lbl">Medium</div></div>
+    <div class="sc"><div class="sc-val green"  id="s-resolved">0</div><div class="sc-lbl">Resolved</div></div>
+  </div>
+
+  <div class="prod-score" id="prod-score">
+    <div class="prod-score-num red" id="score-num">0</div>
+    <div class="prod-score-right">
+      <div class="prod-score-label">Production readiness score</div>
+      <div class="track"><div class="fill red" id="score-fill" style="width:0%"></div></div>
+      <div class="prod-score-sub" id="score-sub">Analysing agent…</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn primary" id="scan-btn" onclick="startAudit()">&#x1F50D; Run full security audit</button>
+    <button class="btn" onclick="resetAudit()">&#x21BA; Reset</button>
+    <span class="progress-text" id="progress-text"></span>
+  </div>
+
+  <div class="ai-box" id="ai-box">
+    <div class="ai-box-label">&#x25C6; Auditor analysis</div>
+    <div class="ai-box-text" id="ai-text"></div>
+  </div>
+
+  <div id="findings-section" style="display:none">
+    <div class="section-lbl">Threat findings</div>
+
+    <!-- Filter tabs -->
+    <div class="filter-bar" id="filter-bar">
+      <button class="filter-tab active all" onclick="setFilter('all')" id="tab-all">
+        All <span class="filter-count" id="cnt-all">0</span>
+      </button>
+      <button class="filter-tab" onclick="setFilter('critical')" id="tab-critical">
+        &#128308; Critical <span class="filter-count" id="cnt-critical">0</span>
+      </button>
+      <button class="filter-tab" onclick="setFilter('high')" id="tab-high">
+        &#128992; High <span class="filter-count" id="cnt-high">0</span>
+      </button>
+      <button class="filter-tab" onclick="setFilter('medium')" id="tab-medium">
+        &#128993; Medium <span class="filter-count" id="cnt-medium">0</span>
+      </button>
+      <button class="filter-tab" onclick="setFilter('resolved')" id="tab-resolved">
+        &#9989; Resolved <span class="filter-count" id="cnt-resolved">0</span>
+      </button>
+    </div>
+
+    <div class="threat-list" id="threat-list"></div>
+
+    <!-- Pagination -->
+    <div class="pagination" id="pagination" style="display:none">
+      <button class="page-btn" id="prev-btn" onclick="changePage(-1)">&#8592; Prev</button>
+      <span class="page-info" id="page-info">Page 1 of 1</span>
+      <button class="page-btn" id="next-btn" onclick="changePage(1)">Next &#8594;</button>
+    </div>
+  </div>
+
+  <div class="section-lbl" style="margin-top:20px">Activity log</div>
+  <div class="log-box" id="log-box"></div>
+
+</div>
+
+<script>
+const SEV_ORDER = {critical:0, high:1, medium:2, low:3, resolved:4};
+const PAGE_SIZE = 10;
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+let findings = {};
+let scanning = false;
+let eventSource = null;
+let logs = [];
+let activeFilter = 'all';
+let currentPage = 1;
+
+function goBack() { window.location.href = '/'; }
+
+function addLog(msg, type='info') {
+  const now = new Date().toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const cls = {ok:'log-ok',err:'log-err',warn:'log-warn',ai:'log-ai'}[type]||'';
+  logs.push(`<div class="log-line"><span class="log-ts">[${now}]</span> <span class="${cls}">${msg}</span></div>`);
+  if(logs.length>80) logs.shift();
+  const box=document.getElementById('log-box');
+  box.innerHTML=logs.join('');
+  box.scrollTop=box.scrollHeight;
+}
+
+function calcScore() {
+  const active=Object.values(findings).filter(f=>f.status==='threat');
+  const penalty=active.reduce((acc,f)=>acc+({critical:12,high:7,medium:3,low:1}[f.severity]||1),0);
+  return Math.max(0,100-penalty);
+}
+
+function updateScoreBar() {
+  const score=calcScore();
+  const numEl=document.getElementById('score-num');
+  const fill=document.getElementById('score-fill');
+  const sub=document.getElementById('score-sub');
+  document.getElementById('prod-score').classList.add('visible');
+  numEl.textContent=score;
+  fill.style.width=score+'%';
+  const isRed=score<70||Object.values(findings).some(f=>f.severity==='critical'&&f.status==='threat');
+  numEl.className='prod-score-num '+(isRed?'red':'green');
+  fill.className='fill '+(isRed?'red':'green');
+  sub.textContent=isRed?'Critical/high threats must be resolved before deployment':'Agent meets minimum security requirements';
+  updateVerdict(isRed);
+  updateCounters();
+}
+
+function updateVerdict(isRed) {
+  const pill=document.getElementById('verdict-pill');
+  const txt=document.getElementById('verdict-text');
+  if(scanning){pill.className='verdict-pill scan';txt.textContent='Scanning…';return;}
+  if(!Object.keys(findings).length) return;
+  pill.className='verdict-pill '+(isRed?'red':'green');
+  txt.textContent=isRed?'Not approved — RED':'Approved — GREEN';
+}
+
+function updateCounters() {
+  const all=Object.values(findings);
+  const cc=all.filter(f=>f.severity==='critical'&&f.status==='threat').length;
+  const hc=all.filter(f=>f.severity==='high'&&f.status==='threat').length;
+  const mc=all.filter(f=>f.severity==='medium'&&f.status==='threat').length;
+  const rc=all.filter(f=>f.status==='resolved').length;
+  document.getElementById('s-critical').textContent=cc;
+  document.getElementById('s-high').textContent=hc;
+  document.getElementById('s-medium').textContent=mc;
+  document.getElementById('s-resolved').textContent=rc;
+  document.getElementById('cnt-all').textContent=all.length;
+  document.getElementById('cnt-critical').textContent=cc;
+  document.getElementById('cnt-high').textContent=hc;
+  document.getElementById('cnt-medium').textContent=mc;
+  document.getElementById('cnt-resolved').textContent=rc;
+}
+
+function setFilter(f) {
+  activeFilter=f;
+  currentPage=1;
+  document.querySelectorAll('.filter-tab').forEach(t=>{
+    t.classList.remove('active','all','critical','high','medium','resolved');
+  });
+  const tab=document.getElementById('tab-'+f);
+  tab.classList.add('active',f);
+  rebuildList();
+}
+
+function getFilteredFindings() {
+  const all=Object.values(findings).sort((a,b)=>{
+    const as=a.status==='resolved'?4:SEV_ORDER[a.severity]||3;
+    const bs=b.status==='resolved'?4:SEV_ORDER[b.severity]||3;
+    return as-bs;
+  });
+  if(activeFilter==='all') return all;
+  if(activeFilter==='resolved') return all.filter(f=>f.status==='resolved');
+  return all.filter(f=>f.severity===activeFilter&&f.status==='threat');
+}
+
+function rebuildList() {
+  const list=document.getElementById('threat-list');
+  const section=document.getElementById('findings-section');
+  const pag=document.getElementById('pagination');
+  const all=Object.values(findings);
+  if(!all.length){list.innerHTML='';section.style.display='none';return;}
+  section.style.display='block';
+
+  const filtered=getFilteredFindings();
+  const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
+  if(currentPage>totalPages) currentPage=totalPages;
+
+  const start=(currentPage-1)*PAGE_SIZE;
+  const page=filtered.slice(start,start+PAGE_SIZE);
+
+  if(!page.length){
+    list.innerHTML=`<div class="empty-state">No ${activeFilter==='all'?'findings':activeFilter} threats found.</div>`;
+    pag.style.display='none';
+    return;
+  }
+
+  list.innerHTML=page.map(f=>renderCard(f)).join('');
+
+  if(totalPages>1){
+    pag.style.display='flex';
+    document.getElementById('page-info').textContent=`Page ${currentPage} of ${totalPages} (${filtered.length} items)`;
+    document.getElementById('prev-btn').disabled=currentPage===1;
+    document.getElementById('next-btn').disabled=currentPage===totalPages;
+  } else {
+    pag.style.display='none';
+  }
+}
+
+function changePage(dir) {
+  const filtered=getFilteredFindings();
+  const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
+  currentPage=Math.max(1,Math.min(totalPages,currentPage+dir));
+  rebuildList();
+  document.getElementById('findings-section').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function renderCard(f) {
+  const resolved=f.status==='resolved';
+  const sev=resolved?'resolved':f.severity;
+  const sevLabel=resolved?'RESOLVED':f.severity.toUpperCase();
+  const bodyOpen=!resolved&&(f.severity==='critical'||f.severity==='high');
+  const stepsHtml=(f.fix_steps||[]).map((s,i)=>`
+    <li><span class="step-n ${resolved?'resolved':'threat'}">${i+1}</span><span>${s}</span></li>`).join('');
+
+  let diffHtml = '';
+  if (f.diff_file) {
+    const isResolved = f.status === 'resolved';
+    const headerText = isResolved
+      ? `✓ Code patched by Agent in <code>${f.diff_file}</code>`
+      : `✦ Expected changes in <code>${f.diff_file}</code>`;
+    
+    diffHtml = `
+      <div class="diff-box">
+        <div class="diff-header">${headerText}</div>
+        <div class="diff-split">
+          <div class="diff-pane">
+            <div class="diff-pane-title before font-bold">Original Code (Before)</div>
+            <div class="diff-code before">${escapeHtml(f.diff_before)}</div>
+          </div>
+          <div class="diff-pane">
+            <div class="diff-pane-title after font-bold">Patched Code (After)</div>
+            <div class="diff-code after">${escapeHtml(f.diff_after)}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `<div class="tcard ${sev}" id="tcard-${f.id}">
+    <div class="tcard-head" onclick="toggleCard('${f.id}')">
+      <div class="sev-dot ${sev}"></div>
+      <span class="tcard-title">${f.title}</span>
+      <span class="domain-tag">${f.domain}</span>
+      <span class="cvss-chip">CVSS ${(f.cvss||0).toFixed(1)}</span>
+      <span class="sev-badge ${sev}">${sevLabel}</span>
+    </div>
+    <div class="tcard-body${bodyOpen?' open':''}" id="tbody-${f.id}">
+      <p class="desc-text">${f.description}</p>
+      <div class="exploit-box">
+        <div class="exploit-label">Attack scenario</div>
+        <div class="exploit-text">${f.exploit||'Review manually.'}</div>
+      </div>
+      <div class="impact-box">
+        <div class="impact-label">Business impact</div>
+        <div class="impact-text">${f.impact||'Unknown impact.'}</div>
+      </div>
+      <div class="remedy-box ${resolved?'resolved':'threat'}">
+        <div class="remedy-label ${resolved?'resolved':'threat'}">${resolved?'&#x2713; Resolution applied':'&#x1F527; How to fix'}</div>
+        <ul class="remedy-steps">${stepsHtml}</ul>
+      </div>
+      ${diffHtml}
+      ${!resolved?`
+        <div style="margin-top:12px;">
+          <button class="resolve-btn" onclick="resolveCheck('${f.id}')">&#x2713; Mark as resolved</button>
+          <button class="resolve-btn" style="background:var(--accent); border-color:var(--accent); color:#fff; margin-left:8px;" onclick="autoResolve('${f.id}')">&#x1F527; Resolve</button>
+        </div>
+      `:`
+        <div style="margin-top:12px;">
+          <button class="resolve-btn" style="background:var(--red); border-color:var(--red); color:#fff;" onclick="autoRevoke('${f.id}')">&#x21BA; Revoke</button>
+        </div>
+      `}
+    </div>
+  </div>`;
+}
+
+function toggleCard(id) {
+  const b=document.getElementById('tbody-'+id);
+  if(b) b.classList.toggle('open');
+}
+
+async function resolveCheck(id) {
+  const f=findings[id];
+  if(!f) return;
+  findings[id].status='resolved';
+  addLog(`Resolved: ${f.title}`,'ok');
+  rebuildList();
+  updateScoreBar();
+  try {
+    const resp=await fetch(`/security/resolve/${id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:f.title})});
+    const data=await resp.json();
+    showAiText(data.message||'Threat resolved.');
+    addLog(data.message||'Resolved.','ai');
+  } catch(e) {
+    showAiText(`Threat "${f.title}" marked as resolved.`);
+  }
+}
+
+async function autoResolve(id) {
+  const f=findings[id];
+  if(!f) return;
+  addLog(`Attempting to automatically patch: ${f.title}`,'warn');
+  try {
+    const resp=await fetch(`/security/fix/${id}`,{method:'POST'});
+    const data=await resp.json();
+    if(resp.status === 200) {
+      addLog(`Auto Fix Succeeded: ${f.title}`,'ok');
+      showAiText(data.message || 'Threat successfully resolved by backend agent.');
+      // Auto-trigger full security audit scan to reload code state
+      startAudit();
+    } else {
+      addLog(`Auto Fix Failed: ${data.message || 'Error occurred.'}`,'err');
+      showAiText(`Could not apply auto-fix: ${data.message}`);
+    }
+  } catch(e) {
+    addLog(`Error during auto-fix: ${e}`,'err');
+    showAiText(`Error: ${e}`);
+  }
+}
+
+async function autoRevoke(id) {
+  const f=findings[id];
+  if(!f) return;
+  addLog(`Attempting to revoke patches for: ${f.title}`,'warn');
+  try {
+    const resp=await fetch(`/security/revoke/${id}`,{method:'POST'});
+    const data=await resp.json();
+    if(resp.status === 200) {
+      addLog(`Patches Revoked successfully: ${f.title}`,'ok');
+      showAiText(data.message || 'Threat successfully reverted to original state.');
+      // Auto-trigger full security audit scan to reload code state
+      startAudit();
+    } else {
+      addLog(`Revoke Failed: ${data.message || 'Error occurred.'}`,'err');
+      showAiText(`Could not revoke patches: ${data.message}`);
+    }
+  } catch(e) {
+    addLog(`Error during revoke: ${e}`,'err');
+    showAiText(`Error: ${e}`);
+  }
+}
+
+function showAiText(text) {
+  const box=document.getElementById('ai-box');
+  box.classList.add('visible');
+  document.getElementById('ai-text').textContent=text;
+}
+
+function startAudit() {
+  if(scanning) return;
+  scanning=true;
+  findings={};
+  currentPage=1;
+  activeFilter='all';
+  logs=[];
+  document.getElementById('log-box').innerHTML='';
+  document.getElementById('threat-list').innerHTML='';
+  document.getElementById('findings-section').style.display='none';
+  document.getElementById('ai-box').classList.remove('visible');
+  document.getElementById('prod-score').classList.remove('visible');
+  document.getElementById('scan-btn').disabled=true;
+  document.getElementById('verdict-pill').className='verdict-pill scan';
+  document.getElementById('verdict-text').textContent='Scanning…';
+  document.querySelectorAll('.filter-tab').forEach(t=>{t.classList.remove('active','all','critical','high','medium','resolved');});
+  document.getElementById('tab-all').classList.add('active','all');
+  updateCounters();
+  addLog('Starting AI security audit — Groq llama-3.3-70b-versatile','warn');
+  addLog('Connecting to audit stream…');
+  if(eventSource) eventSource.close();
+  eventSource=new EventSource('/security/audit/stream');
+  eventSource.onmessage=function(e){
+    const event=JSON.parse(e.data);
+    if(event.type==='start'){
+      addLog(`Analysing ${event.total} threats across 7 security domains…`,'ai');
+      document.getElementById('progress-text').textContent=`0 / ${event.total}`;
+    } else if(event.type==='finding'){
+      const f=event.finding;
+      findings[f.id]=f;
+      const lt=f.severity==='critical'||f.severity==='high'?'err':f.severity==='medium'?'warn':'ok';
+      const st=f.status==='resolved'?'ok':lt;
+      addLog(`[${f.status==='resolved'?'RESOLVED':f.severity.toUpperCase()}] ${f.title}`,st);
+      document.getElementById('progress-text').textContent=`${event.index+1} / ${event.total}`;
+      rebuildList();
+      updateScoreBar();
+    } else if(event.type==='done'){
+      scanning=false;
+      eventSource.close();
+      document.getElementById('scan-btn').disabled=false;
+      document.getElementById('progress-text').textContent='';
+      const isRed=event.verdict==='NOT APPROVED';
+      document.getElementById('verdict-pill').className='verdict-pill '+(isRed?'red':'green');
+      document.getElementById('verdict-text').textContent=isRed?'Not approved — RED':'Approved — GREEN';
+      addLog(`Audit complete. Score: ${event.score}/100. ${event.critical_count} critical · ${event.high_count} high · ${event.medium_count} medium`,isRed?'err':'ok');
+      updateScoreBar();
+      showAiText(`Security audit complete. Score: ${event.score}/100. Found ${event.critical_count} critical, ${event.high_count} high, ${event.medium_count} medium severity issues. `+(isRed?`Agent is NOT approved for production. Resolve all critical and high threats first.`:`All critical and high threats are resolved. Agent meets minimum security requirements.`));
+    } else if(event.type==='error'){
+      scanning=false;
+      document.getElementById('scan-btn').disabled=false;
+      addLog('Error: '+event.message,'err');
+    }
+  };
+  eventSource.onerror=function(){
+    scanning=false;
+    document.getElementById('scan-btn').disabled=false;
+    addLog('Connection to audit stream lost. Is the server running?','err');
+    eventSource.close();
+  };
+}
+
+function resetAudit() {
+  if(eventSource) eventSource.close();
+  scanning=false; findings={}; currentPage=1; activeFilter='all'; logs=[];
+  document.getElementById('log-box').innerHTML='';
+  document.getElementById('threat-list').innerHTML='';
+  document.getElementById('findings-section').style.display='none';
+  document.getElementById('ai-box').classList.remove('visible');
+  document.getElementById('prod-score').classList.remove('visible');
+  document.getElementById('scan-btn').disabled=false;
+  document.getElementById('verdict-pill').className='verdict-pill idle';
+  document.getElementById('verdict-text').textContent='Awaiting scan';
+  document.getElementById('progress-text').textContent='';
+  document.querySelectorAll('.filter-tab').forEach(t=>{t.classList.remove('active','all','critical','high','medium','resolved');});
+  document.getElementById('tab-all').classList.add('active','all');
+  updateCounters();
+  addLog('Auditor reset.');
+}
+
+addLog('AI Security Auditor ready. Click "Run full security audit" to begin.');
+</script>
+</body>
+</html>

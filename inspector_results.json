@@ -1,0 +1,132 @@
+[
+  {
+    "id": "project_files",
+    "title": "Project file structure",
+    "stage": "init",
+    "status": "ok",
+    "detail": "All 7 required files present.",
+    "fix_steps": []
+  },
+  {
+    "id": "requirements",
+    "title": "requirements.txt",
+    "stage": "init",
+    "status": "ok",
+    "detail": "All required packages listed.",
+    "fix_steps": []
+  },
+  {
+    "id": "env_vars",
+    "title": "Missing .env variables",
+    "stage": "config",
+    "status": "threat",
+    "detail": "Missing keys: DOMO_INSTANCE",
+    "fix_steps": [
+      "Add DOMO_INSTANCE=<value> to your .env file",
+      "Restart uvicorn after editing."
+    ]
+  },
+  {
+    "id": "collection_id",
+    "title": "Collection ID check skipped",
+    "stage": "config",
+    "status": "skip",
+    "detail": "",
+    "fix_steps": []
+  },
+  {
+    "id": "domo_auth",
+    "title": "Domo auth test skipped",
+    "stage": "auth",
+    "status": "skip",
+    "detail": "Missing token/instance/collection_id \u2014 skipping live test.",
+    "fix_steps": []
+  },
+  {
+    "id": "groq_key",
+    "title": "Groq API key",
+    "stage": "auth",
+    "status": "ok",
+    "detail": "Key valid. Target model 'llama-3.3-70b-versatile' available.",
+    "fix_steps": []
+  },
+  {
+    "id": "fastapi_server",
+    "title": "FastAPI server",
+    "stage": "conn",
+    "status": "ok",
+    "detail": "Server running at http://127.0.0.1:8000. UI served.",
+    "fix_steps": []
+  },
+  {
+    "id": "no_auth",
+    "title": "No auth on /chat endpoint",
+    "stage": "conn",
+    "status": "threat",
+    "detail": "Endpoint responds to unauthenticated requests \u2014 exposed to anyone with the URL.",
+    "fix_steps": [
+      "Add API-key middleware in app.py:",
+      "  from fastapi import Request",
+      "  @app.middleware('http')",
+      "  async def auth_middleware(request: Request, call_next):",
+      "      key = request.headers.get('X-API-Key')",
+      "      if key != os.getenv('API_SECRET_KEY'):",
+      "          return Response('Forbidden', status_code=403)",
+      "      return await call_next(request)",
+      "Add API_SECRET_KEY=<random-string> to .env"
+    ]
+  },
+  {
+    "id": "partial_match",
+    "title": "Partial match check skipped",
+    "stage": "tools",
+    "status": "skip",
+    "detail": "",
+    "fix_steps": []
+  },
+  {
+    "id": "groq_crash",
+    "title": "Groq crash handler missing",
+    "stage": "agent",
+    "status": "threat",
+    "detail": "agent.py may crash on malformed tool calls: BadRequestError not caught, tool_use_failed not handled",
+    "fix_steps": [
+      "In agent.py inside the chat() method, wrap the Groq call:",
+      "  from groq import BadRequestError",
+      "  except BadRequestError as e:",
+      "      # salvage any partial text",
+      "      fallback = next((b.text for b in e.response... if b.type=='text'), '')",
+      "      return fallback or 'I had trouble with that tool call \u2014 could you rephrase?'"
+    ]
+  },
+  {
+    "id": "chat_endpoint",
+    "title": "/chat endpoint",
+    "stage": "exec",
+    "status": "ok",
+    "detail": "Responded: \"I'm ready to help. How can I assist you with the documents today? Would you like\u2026\"",
+    "fix_steps": []
+  },
+  {
+    "id": "session_loss",
+    "title": "In-memory sessions only",
+    "stage": "exec",
+    "status": "warn",
+    "detail": "Sessions stored in plain dict \u2014 wiped on every uvicorn restart.",
+    "fix_steps": [
+      "Quick fix \u2014 add diskcache:",
+      "  pip install diskcache --break-system-packages",
+      "  import diskcache",
+      "  sessions = diskcache.Cache('./session_store')",
+      "This persists sessions to disk across restarts."
+    ]
+  },
+  {
+    "id": "delete_confirm",
+    "title": "Delete confirmation guard",
+    "stage": "exec",
+    "status": "ok",
+    "detail": "'confirmed' parameter found in tools.py.",
+    "fix_steps": []
+  }
+]
