@@ -305,6 +305,12 @@ THREAT_DETAILS = {
 PATCH_DIFFS = {
     "prompt_injection": {
         "file": "agent.py",
+        "reason": (
+            "The old code sent whatever the user typed directly to the AI with no checks — "
+            "a carefully worded message could trick the AI into taking harmful actions. "
+            "The patch trims the input and limits it to 2000 characters, "
+            "so the AI only ever receives clean, bounded text."
+        ),
         "before": (
             "# agent.py — DomoAppDBAgent.chat() receives raw user input\n"
             "    def chat(self, user_message: str) -> str:\n"
@@ -322,6 +328,12 @@ PATCH_DIFFS = {
     },
     "delete_no_guard": {
         "file": "tools.py",
+        "reason": (
+            "The old code would let the AI call any tool, including delete — "
+            "any user chatting with the bot could accidentally or intentionally wipe documents. "
+            "The patch blocks delete requests at the tool runner before they ever reach the database, "
+            "returning an access-denied message instead."
+        ),
         "before": (
             "# tools.py — execute_tool() with no delete guard\n"
             "def execute_tool(name: str, args: dict) -> str:\n"
@@ -351,6 +363,12 @@ PATCH_DIFFS = {
     },
     "no_endpoint_auth": {
         "file": "app.py",
+        "reason": (
+            "The old code left every API endpoint completely open — "
+            "anyone who knew the server address could read or destroy all Domo data without any login. "
+            "The patch adds a key check on every request, "
+            "turning away anyone who does not supply the correct API key with a 401 Unauthorized error."
+        ),
         "before": (
             "# app.py — no authentication on any endpoint\n"
             "app = FastAPI(title=\"Domo AppDB Agent API\", version=\"1.0.0\")\n\n"
@@ -385,6 +403,12 @@ PATCH_DIFFS = {
     },
     "token_leakage": {
         "file": "agent.py",
+        "reason": (
+            "The old code returned the AI's reply as-is — "
+            "if the AI accidentally included a secret token or API key in its response, the user would see it in plain text. "
+            "The patch scans every reply before it leaves the server and replaces any secrets "
+            "or long credential-like strings with [REDACTED]."
+        ),
         "before": (
             "# agent.py — raw LLM response returned without sanitization\n"
             "    def chat(self, user_message: str) -> str:\n"
@@ -412,6 +436,12 @@ PATCH_DIFFS = {
     },
     "no_rate_limit": {
         "file": "app.py",
+        "reason": (
+            "The old code had no throttle, so anyone could flood the server with thousands of requests per second "
+            "and rack up API costs or bring the service down. "
+            "The patch adds a counter per visitor that allows only 10 requests per minute, "
+            "blocking anyone who exceeds that limit with a 429 error."
+        ),
         "before": (
             "# app.py — no rate limiting; unlimited requests allowed\n"
             "from fastapi import FastAPI, HTTPException\n\n"
@@ -437,6 +467,12 @@ PATCH_DIFFS = {
     },
     "env_commit_risk": {
         "file": ".gitignore",
+        "reason": (
+            "The old .gitignore did not list .env, so a developer running 'git add .' could accidentally "
+            "commit the developer token and other passwords into version history. "
+            "The patch adds .env and *.env to .gitignore so Git will always ignore these secret files "
+            "and they can never be accidentally uploaded to a shared or public repository."
+        ),
         "before": (
             "# .gitignore — no exclusion for .env / secrets\n"
             "__pycache__/\n"
@@ -510,7 +546,8 @@ def stream_audit(project_root: Path = None) -> Generator[dict, None, None]:
 
     client = Client(
         host="https://ollama.com",
-        headers={"Authorization": f"Bearer {OLLAMA_API_KEY}"}
+        headers={"Authorization": f"Bearer {OLLAMA_API_KEY}"},
+        timeout=30.0,
     )
 
     # Step 1 — Read actual files
@@ -523,54 +560,75 @@ def stream_audit(project_root: Path = None) -> Generator[dict, None, None]:
 
     findings = []
     for i, threat in enumerate(THREATS):
-        tid      = threat["id"]
-        details  = THREAT_DETAILS.get(tid, {})
-        resolved = static_results.get(tid, False)
+        try:
+            tid      = threat["id"]
+            details  = THREAT_DETAILS.get(tid, {})
+            resolved = static_results.get(tid, False)
 
-        diff_info = PATCH_DIFFS.get(tid, {})
+            diff_info = PATCH_DIFFS.get(tid, {})
 
-        if resolved:
-            # Threat is fixed — mark green immediately
+            if resolved:
+                finding = {
+                    "id":          tid,
+                    "domain":      threat["domain"],
+                    "severity":    threat["severity"],
+                    "title":       threat["title"],
+                    "description": details.get("desc", ""),
+                    "exploit":     details.get("exploit", ""),
+                    "impact":      details.get("impact", ""),
+                    "fix_steps":   details.get("fix", []),
+                    "code_snippet": "",
+                    "cvss":        _default_cvss(threat["severity"]),
+                    "status":      "resolved",
+                    "analysed_at": datetime.now().isoformat(),
+                    "diff_file":   diff_info.get("file", ""),
+                    "diff_before": diff_info.get("before", ""),
+                    "diff_after":  diff_info.get("after", ""),
+                    "diff_reason": diff_info.get("reason", ""),
+                }
+            else:
+                relevant_file = _get_relevant_file(tid, files)
+                ollama_data = _ollama_analyse(client, threat, relevant_file)
+                time.sleep(0.2)
+
+                finding = {
+                    "id":          tid,
+                    "domain":      threat["domain"],
+                    "severity":    threat["severity"],
+                    "title":       threat["title"],
+                    "description": details.get("desc", ""),
+                    "exploit":     ollama_data.get("exploit", details.get("exploit", "Manual review required.")),
+                    "impact":      ollama_data.get("impact", details.get("impact", "Unknown impact.")),
+                    "fix_steps":   ollama_data.get("fix_steps", details.get("fix", ["Review manually"])),
+                    "code_snippet": "",
+                    "cvss":        ollama_data.get("cvss", _default_cvss(threat["severity"])),
+                    "status":      "threat",
+                    "analysed_at": datetime.now().isoformat(),
+                    "diff_file":   diff_info.get("file", ""),
+                    "diff_before": diff_info.get("before", ""),
+                    "diff_after":  diff_info.get("after", ""),
+                    "diff_reason": diff_info.get("reason", ""),
+                }
+
+        except Exception as e:
+            logger.warning("Threat %s analysis failed: %s — using defaults", threat.get("id"), e)
             finding = {
-                "id":          tid,
-                "domain":      threat["domain"],
-                "severity":    threat["severity"],
-                "title":       threat["title"],
-                "description": details.get("desc", ""),
-                "exploit":     details.get("exploit", ""),
-                "impact":      details.get("impact", ""),
-                "fix_steps":   details.get("fix", []),
+                "id":          threat.get("id", f"threat_{i}"),
+                "domain":      threat.get("domain", "Unknown"),
+                "severity":    threat.get("severity", "medium"),
+                "title":       threat.get("title", "Unknown threat"),
+                "description": THREAT_DETAILS.get(threat.get("id", ""), {}).get("desc", "Analysis unavailable."),
+                "exploit":     "Analysis timed out — review manually.",
+                "impact":      "Unknown impact.",
+                "fix_steps":   THREAT_DETAILS.get(threat.get("id", ""), {}).get("fix", ["Review manually"]),
                 "code_snippet": "",
-                "cvss":        _default_cvss(threat["severity"]),
-                "status":      "resolved",
-                "analysed_at": datetime.now().isoformat(),
-                "diff_file":   diff_info.get("file", ""),
-                "diff_before": diff_info.get("before", ""),
-                "diff_after":  diff_info.get("after", ""),
-            }
-        else:
-            # Threat NOT fixed — ask Ollama for analysis
-            # Pass relevant file snippet for context
-            relevant_file = _get_relevant_file(tid, files)
-            ollama_data = _ollama_analyse(client, threat, relevant_file)
-            time.sleep(0.2)
-
-            finding = {
-                "id":          tid,
-                "domain":      threat["domain"],
-                "severity":    threat["severity"],
-                "title":       threat["title"],
-                "description": details.get("desc", ""),
-                "exploit":     ollama_data.get("exploit", details.get("exploit", "Manual review required.")),
-                "impact":      ollama_data.get("impact", details.get("impact", "Unknown impact.")),
-                "fix_steps":   ollama_data.get("fix_steps", details.get("fix", ["Review manually"])),
-                "code_snippet": "",
-                "cvss":        ollama_data.get("cvss", _default_cvss(threat["severity"])),
+                "cvss":        _default_cvss(threat.get("severity", "medium")),
                 "status":      "threat",
                 "analysed_at": datetime.now().isoformat(),
-                "diff_file":   diff_info.get("file", ""),
-                "diff_before": diff_info.get("before", ""),
-                "diff_after":  diff_info.get("after", ""),
+                "diff_file":   PATCH_DIFFS.get(threat.get("id", ""), {}).get("file", ""),
+                "diff_before": PATCH_DIFFS.get(threat.get("id", ""), {}).get("before", ""),
+                "diff_after":  PATCH_DIFFS.get(threat.get("id", ""), {}).get("after", ""),
+                "diff_reason": PATCH_DIFFS.get(threat.get("id", ""), {}).get("reason", ""),
             }
 
         findings.append(finding)
