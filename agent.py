@@ -2,8 +2,22 @@
 import json
 import re
 from ollama import Client
-from config import OLLAMA_API_KEY, MODEL, SYSTEM_PROMPT, DOMO_DEVELOPER_TOKEN
+from config import OLLAMA_API_KEY, MODEL, DOMO_DEVELOPER_TOKEN, SYSTEM_PROMPT_SECURE, SYSTEM_PROMPT_INSECURE
 from tools import TOOL_SCHEMAS, execute_tool
+
+
+def get_system_prompt() -> str:
+    # Check if tools.py contains the admin guard
+    try:
+        from pathlib import Path
+        tools_path = Path(__file__).parent / "tools.py"
+        if tools_path.exists():
+            content = tools_path.read_text(encoding="utf-8")
+            if "admin access" in content.lower():
+                return SYSTEM_PROMPT_SECURE
+    except Exception:
+        pass
+    return SYSTEM_PROMPT_INSECURE
 
 
 def _sanitize_input(user_in: str) -> str:
@@ -26,9 +40,11 @@ class DomoAppDBAgent:
             host="https://ollama.com",
             headers={"Authorization": f"Bearer {OLLAMA_API_KEY}"}
         )
-        self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        self.messages = [{"role": "system", "content": get_system_prompt()}]
 
     def chat(self, user_message: str) -> str:
+        if self.messages and self.messages[0]["role"] == "system":
+            self.messages[0]["content"] = get_system_prompt()
         sanitized = _sanitize_input(user_message)
         self.messages.append({"role": "user", "content": sanitized})
 
@@ -78,4 +94,4 @@ class DomoAppDBAgent:
                 })
 
     def reset(self):
-        self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        self.messages = [{"role": "system", "content": get_system_prompt()}]
