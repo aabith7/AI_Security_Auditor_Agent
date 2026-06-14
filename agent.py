@@ -2,8 +2,22 @@
 import json
 import re
 from ollama import Client
-from config import OLLAMA_API_KEY, MODEL, SYSTEM_PROMPT
+from config import OLLAMA_API_KEY, MODEL, SYSTEM_PROMPT, DOMO_DEVELOPER_TOKEN
 from tools import TOOL_SCHEMAS, execute_tool
+
+
+def _sanitize_input(user_in: str) -> str:
+    # Enforce MAX_INPUT_LENGTH to prevent prompt injection and resource exhaust attacks
+    MAX_INPUT_LENGTH = 2000
+    cleaned = user_in.strip()
+    return cleaned[:MAX_INPUT_LENGTH]
+
+
+def _sanitize_output(text: str) -> str:
+    for secret in [DOMO_DEVELOPER_TOKEN, OLLAMA_API_KEY]:
+        if secret and secret in text:
+            text = text.replace(secret, "[REDACTED]")
+    return re.sub(r'[A-Za-z0-9_\-]{40,}', '[REDACTED]', text)
 
 class DomoAppDBAgent:
     def __init__(self):
@@ -15,7 +29,8 @@ class DomoAppDBAgent:
         self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
     def chat(self, user_message: str) -> str:
-        self.messages.append({"role": "user", "content": user_message})
+        sanitized = _sanitize_input(user_message)
+        self.messages.append({"role": "user", "content": sanitized})
 
         while True:
             response = self.client.chat(
@@ -26,8 +41,9 @@ class DomoAppDBAgent:
             msg = response.message
 
             if not msg.tool_calls:
-                self.messages.append({"role": "assistant", "content": msg.content or ""})
-                return msg.content or ""
+                reply = _sanitize_output(msg.content or "")
+                self.messages.append({"role": "assistant", "content": reply})
+                return reply
 
             # Reconstruct the assistant message to append to history
             assistant_msg = {

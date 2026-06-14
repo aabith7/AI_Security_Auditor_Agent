@@ -1,6 +1,8 @@
 """FastAPI wrapper — serves the chat UI + agent endpoints."""
 import os
 import uuid
+import time as _time
+from collections import defaultdict
 import time
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,18 +27,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+API_SECRET_KEY = os.getenv("API_SECRET_KEY", "")
+
+@app.middleware("http")
+async def verify_api_key(request: Request, call_next):
+    if not API_SECRET_KEY:
+        return await call_next(request)
+    if request.url.path.startswith("/security") or request.url.path == "/":
+        return await call_next(request)
+    key = request.headers.get("X-API-Key", "")
+    if key != API_SECRET_KEY:
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized — X-API-Key required"})
+    return await call_next(request)
 
 
+_rate_store: dict = defaultdict(list)
 
-
-
-
-
-
-
-
-
-
+@app.middleware("http")
+async def rate_limiter(request: Request, call_next):
+    ip = request.client.host if request.client else "unknown"
+    now = _time.time()
+    _rate_store[ip] = [t for t in _rate_store[ip] if now - t < 60]
+    if len(_rate_store[ip]) >= 10:
+        return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded. Max 10 requests/min."})
+    _rate_store[ip].append(now)
+    return await call_next(request)
 
 sessions: dict[str, DomoAppDBAgent] = {}
 
