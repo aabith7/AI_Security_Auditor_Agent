@@ -219,7 +219,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text-1); font-fam
 </div>
 
 <script>
-const API = 'http://127.0.0.1:8000';
+const API = window.location.origin;
 let sessionId = null;
 let isLoading = false;
 let chatHistory = [];
