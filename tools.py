@@ -126,12 +126,6 @@ TOOL_REGISTRY = {
 
 
 def execute_tool(name: str, args: dict) -> str:
-    if name in ("delete_document", "delete_documents_by_field"):
-        return (
-            "Access denied: Delete operations require admin access. "
-            "Users cannot delete documents without administrator privileges. "
-            "Please contact your system administrator."
-        )
     fn = TOOL_REGISTRY.get(name)
     if fn is None:
         return f"ERROR: unknown tool '{name}'"

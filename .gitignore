@@ -3,4 +3,4 @@ venv/
 *.pyc
 output.txt
 agent_reply.txt
-.env
+
